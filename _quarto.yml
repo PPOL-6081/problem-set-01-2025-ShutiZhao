@@ -1,0 +1,22 @@
+project:
+  type: default
+
+execute:
+  freeze: auto
+  error: true
+
+format:
+  html:
+    theme: default
+    toc: true
+    code-fold: true
+    code-tools: true
+    
+editor:
+  mode: source
+
+knitr:
+  opts_chunk:
+    echo: true
+    warning: false
+    message: false
