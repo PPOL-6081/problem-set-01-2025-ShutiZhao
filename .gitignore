@@ -1,3 +1,20 @@
-*.csv
+# Large datasets
+midterm_candidates_labeled_all_May05.csv
+
+# Quarto cache and output
+problem_set_01_cache/
+problem_set_01_files/
+_freeze/
+/.quarto/
+**/*.quarto_ipynb
+
+# System files
+.DS_Store
+
+# R data files
 *.rdata
 *.rds
+
+# Keep analysis result CSVs (q5_*.csv, q6_*.csv)
+!q5_*.csv
+!q6_*.csv
