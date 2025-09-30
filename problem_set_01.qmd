@@ -1,6 +1,6 @@
 ---
 title: "Text as Data: Problem Set 01"
-author: "Professor Tiago Ventura"
+author: "Emily Zhao"
 execute: 
   error: true
 format:
@@ -98,7 +98,7 @@ knitr::kable(df_to_read[, c("party","date","author","text_short")], format = "ht
 cat(paste0("• ", df_to_read$text_full), sep = "\n\n")
 ```
 
-**Your thoughts and observations:**
+**thoughts and observations:**
 
 When I looked through a small sample of posts that focused on policy issues like inflation, jobs, crime, abortion, immigration, and education, a few things stood out to me.
 
@@ -535,6 +535,44 @@ if (file.exists("q5_sentiment_overall.png") && file.exists("q5_sentiment_by_part
 Pick some documents (at least 10 for each class) that are exemplar (high probability) of being for each class of your dictionary. Read these documents.  Now let's try to augment a little your classifier.
 
 ```{r}
+# Load Q5 results and recreate necessary variables for Q6
+if (file.exists("q5_labeled_sample.csv")) {
+  lab2 <- read.csv("q5_labeled_sample.csv", stringsAsFactors = FALSE)
+  
+  # Define sentiment dictionaries (from Q5)
+  POS <- c("good", "great", "excellent", "amazing", "wonderful", "fantastic", 
+           "love", "like", "enjoy", "happy", "proud", "thank", "support", 
+           "honor", "blessed", "grateful", "success", "win", "victory")
+  
+  NEG <- c("bad", "terrible", "awful", "horrible", "hate", "dislike", 
+           "angry", "sad", "disappointed", "frustrated", "worried", 
+           "concerned", "crisis", "problem", "issue", "fail", "lose", 
+           "defeat", "attack", "destroy")
+  
+  # Simple tokenization function
+  clean_tokens <- function(text) {
+    if (is.na(text) || nchar(text) == 0) return(character(0))
+    text <- tolower(text)
+    text <- gsub("[^a-z ]", " ", text)
+    tokens <- strsplit(text, "\\s+")[[1]]
+    tokens[nchar(tokens) > 2]  # keep words longer than 2 chars
+  }
+  
+  # Add sentiment scores to lab2
+  lab2$pos <- sapply(lab2$text, function(x) sum(clean_tokens(x) %in% POS))
+  lab2$neg <- sapply(lab2$text, function(x) sum(clean_tokens(x) %in% NEG))
+  lab2$label_rescore <- ifelse(lab2$pos > lab2$neg, "Positive",
+                               ifelse(lab2$neg > lab2$pos, "Negative", "Neutral"))
+  
+  cat("Loaded", nrow(lab2), "documents for Q6 analysis\n")
+  cat("Sentiment distribution:", table(lab2$label_rescore), "\n")
+  
+} else {
+  stop("Q5 results file not found. Please run: Rscript question5_standalone.R")
+}
+```
+
+```{r}
 # Augmentation
 negate_terms <- c("not","no","never","isnt","wasnt","cant","wont","dont","doesnt","didnt")  # no apostrophes
 
@@ -708,7 +746,7 @@ if (file.exists("q5_labeled_sample.csv")) {
 }
 ```
 
-**Your thoughts and observations:**
+**thoughts and observations:**
 
 After examining the exemplar documents using top features, TF-IDF scores, and keywords-in-context, I found several patterns that would improve my sentiment dictionary. The most frequent terms were dominated by Unicode artifacts from social media formatting and political terminology like "democrats," "republicans," and "hurricane" - reflecting the Hurricane Ian disaster context that appeared in multiple posts.
 
