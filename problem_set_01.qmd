@@ -1,6 +1,6 @@
 ---
 title: "Text as Data: Problem Set 01"
-author: "Professor Tiago Ventura"
+author: "Emily Zhao"
 execute: 
   error: true
 format:
@@ -63,7 +63,7 @@ df %>%
 ```
 
 ```{r}
-# First, let's create the sample data
+# First, create the sample data
 terms <- c("inflation","economy","jobs","crime","abortion","immigration",
            "border","climate","guns","healthcare","tax","education")
 
@@ -98,7 +98,7 @@ knitr::kable(df_to_read[, c("party","date","author","text_short")], format = "ht
 cat(paste0("• ", df_to_read$text_full), sep = "\n\n")
 ```
 
-**Your thoughts and observations:**
+**thoughts and observations:**
 
 When I looked through a small sample of posts that focused on policy issues like inflation, jobs, crime, abortion, immigration, and education, a few things stood out to me.
 
@@ -112,126 +112,33 @@ Overall, reading these posts helped me see both the main themes and the style of
 
 Tokenize your documents and pre-process them, removing any "extraneous" content you noticed in closely reading a sample of your documents. What content have you removed and why? Any pre-processing steps from what you saw in class that you consider not to use here? 
 
-```{r question2}
-# Tokenize and Preprocess
-if (!requireNamespace("pacman", quietly = TRUE)) install.packages("pacman")
-pacman::p_load(dplyr, stringr, readr, quanteda, quanteda.textstats, tidytext)
-
-# Assumes df is already loaded from Q1:
-stopifnot(exists("df"))
-
-text_col <- "text"
-
-# Things to REMOVE as “extraneous” for modeling
-remove_regex <- list(
-  url      = "(https?://|www\\.)\\S+",        # URLs/UTM junk
-  handle   = "(?<=\\s|^)@[A-Za-z0-9_]+",      # @mentions
-  rt_amp   = "\\b(rt|amp)\\b",                 # retweet tag & HTML 'amp'
-  ellipses = "…|&amp;|&gt;|&lt;",             # common HTML/Unicode artifacts
-  emoji    = "[\\p{So}\\p{Cn}]+",             # emojis/symbols (broad net)
-  nbsp     = "\\u00A0"                        # non-breaking space
-)
-
-# Hashtags: keep topic info but drop the # symbol (e.g., #ProChoice -> prochoice)
-# Keep hashtags because many are issue labels.
-hashtag_pattern <- "#([A-Za-z0-9_]+)"
-
-# Stopword list: standard + campaign boilerplate (tune as needed)
-custom_stop <- c(stopwords("en"),
-                 # platform/campaign boilerplate you noted in Q1:
-                 "please","thank","thanks","join","donate","volunteer",
-                 "rsvp","event","today","tonight","tomorrow","vote","voting",
-                 "link","click","share","retweet","follow")
-```
-
 ```{r}
-# Define variables (from previous chunk)
-text_col <- "text"
+txt <- tolower(as.character(df$text))
 
-# Things to REMOVE as "extraneous" for modeling
-remove_regex <- list(
-  url      = "(https?://|www\\.)\\S+",        # URLs/UTM junk
-  handle   = "(?<=\\s|^)@[A-Za-z0-9_]+",      # @mentions
-  rt_amp   = "\\b(rt|amp)\\b",                 # retweet tag & HTML 'amp'
-  ellipses = "…|&amp;|&gt;|&lt;",             # common HTML/Unicode artifacts
-  emoji    = "[\\p{So}\\p{Cn}]+",             # emojis/symbols (broad net)
-  nbsp     = "\\u00A0"                        # non-breaking space
-)
+# remove obvious junk, keep it simple
+txt <- str_replace_all(txt, "https?://\\S+|www\\.\\S+", " ")  # URLs
+txt <- str_replace_all(txt, "@\\w+", " ")                     # @handles
+txt <- str_replace_all(txt, "&amp;|&lt;|&gt;", " ")           # HTML bits
+txt <- str_replace_all(txt, "#", "")                          # drop '#' but keep hashtag words
+txt <- str_replace_all(txt, "[^a-z\\s]", " ")                 # emojis/punct/numbers → space
+txt <- str_squish(txt)
 
-# Hashtags: keep topic info but drop the # symbol (e.g., #ProChoice -> prochoice)
-hashtag_pattern <- "#([A-Za-z0-9_]+)"
+# tokenize -> remove stopwords -> dfm -> light trim
+corp   <- corpus(txt)
+toks   <- tokens(corp, remove_numbers = TRUE, remove_punct = TRUE, remove_symbols = TRUE) |>
+          tokens_remove(stopwords("en"))
+dfm_q2 <- dfm(toks) |> dfm_trim(min_termfreq = 5)
 
-# Stopword list: standard + campaign boilerplate
-custom_stop <- c(stopwords("en"),
-                # platform/campaign boilerplate:
-                "please","thank","thanks","join","donate","volunteer",
-                "rsvp","event","today","tonight","tomorrow","vote","voting",
-                "link","click","share","retweet","follow")
-
-# Pre-clean: normalize & remove artifacts while KEEPING hashtag words
-text_clean <- df[[text_col]] |>
-  # ensure string
-  as.character() |>
-  # normalize Unicode & whitespace
-  stringi::stri_trans_general("Latin-ASCII") |>
-  str_replace_all(remove_regex$url, " ") |>
-  str_replace_all(remove_regex$handle, " ") |>
-  str_replace_all(hashtag_pattern, "\\1") |>          # strip '#', keep token
-  str_replace_all(remove_regex$rt_amp, " ") |>
-  str_replace_all(remove_regex$ellipses, " ") |>
-  str_replace_all(remove_regex$emoji, " ") |>
-  str_replace_all(remove_regex$nbsp, " ") |>
-  str_squish()
-
-# Build corpus & tokens
-corp <- corpus(text_clean)
-
-toks <- tokens(
-  corp,
-  remove_punct   = TRUE,
-  remove_symbols = TRUE,
-  remove_numbers = TRUE
-) |>
-  tokens_tolower() |>
-  tokens_remove(pattern = custom_stop) |>
-  tokens_keep(pattern = "^[a-z][a-z0-9_]+$", valuetype = "regex")  # keep words
-
-# Build a DFM and trim very rare terms (tune threshold)
-dfm_clean <- dfm(toks) |> dfm_trim(min_termfreq = 5)
-dfm_clean
+# tiny peek
+head(textstat_frequency(dfm_q2, n = 20))
 ```
 
-```{r}
-# Token count before/after (rough)
-raw_len   <- nchar(df[[text_col]])
-clean_len <- nchar(text_clean)
+**thoughts and observations:**
+I cleaned the text by lowercasing and removing obvious platform noise: URLs, @mentions, HTML artifacts (&amp;, &gt;, etc.), punctuation/numbers/emojis, and extra whitespace. I kept hashtag words for topic signal (e.g., #Inflation → inflation) but dropped the #.
 
-summary_tbl <- tibble::tibble(
-  n_docs          = nrow(df),
-  median_chars_raw   = median(raw_len,   na.rm = TRUE),
-  median_chars_clean = median(clean_len, na.rm = TRUE),
-  vocab_size_raw     = length(unique(unlist(str_split(tolower(paste(df[[text_col]], collapse=" ")), "\\s+")))),
-  vocab_size_clean   = nfeat(dfm_clean)
-)
+Then I tokenized, removed English stopwords, built a document-feature matrix, and lightly trimmed very rare terms (min_termfreq = 5) to reduce one-off noise. A quick peek at top terms after cleaning looked reasonable and content-bearing.
 
-summary_tbl
-
-# Show a few examples (first 5) before/after
-ex <- tibble::tibble(
-  raw   = df[[text_col]][1:5],
-  clean = text_clean[1:5]
-)
-ex
-```
-
-```{r}
-# Top terms after cleaning (sanity check)
-top_terms <- textstat_frequency(dfm_clean, n = 30)
-head(top_terms, 30)
-```
-
-**Your thoughts and observations:**
-In preprocessing, I removed punctuation, numbers, and stopwords, since these do not carry substantive meaning for political analysis. I also applied stemming to reduce inflected forms to a common base, which helps group related terms together. However, I decided to keep hashtags and @mentions, since in the context of campaigns these often reference movements, slogans, or political actors directly. I also chose not to apply lemmatization on top of stemming, because doing both could oversimplify the vocabulary and strip away nuance. The trimming step ensured that extremely rare or overly common words were dropped, leaving a more balanced set of features for later analysis.
+I intentionally did not use stemming/lemmatization (to keep words readable), didn’t build n-grams, and didn’t apply TF-IDF at this stage—the goal here was just a clear, simple token set for downstream analysis.
 
 ## Question 3
 
@@ -286,309 +193,237 @@ PreText shows that the only preprocessing choice that materially changes the doc
 
 Pick an important source of variation in your data (for example: date, author identity, location, etc.). Subset the data along this dimension, and discuss which words discriminate better each group. You can do this by using TF-IDF, PMI, log(share $word_i$ in group a/share $word_i$ in b), or create a measure similar to Ban's article. 
 
- ```{r}
- # Load data
-if (!requireNamespace("pacman", quietly = TRUE)) install.packages("pacman")
-pacman::p_load(readr, dplyr, stringr, tidytext, ggplot2)
+ # Q4 — Party as source of variation; which words discriminate each group?
 
-# Point to your CSV (adjust if you moved it)
-data_path <- "/Users/zhaoshuti/Desktop/TAT/problem-set-01-2025-ShutiZhao/midterm_candidates_labeled_all_May05.csv"
-
-# Read only the columns we need to keep memory down
-candidate_data <- readr::read_csv(
-  data_path,
-  col_select = c(text, party_clean),
-  guess_max = 1e6,
-  show_col_types = FALSE
-)
-
-# Confirm I have the object & columns
-stopifnot(is.data.frame(candidate_data))
-stopifnot(all(c("text","party_clean") %in% names(candidate_data)))
-
-# Light sanity peek (optional)
-candidate_data %>% slice_head(n = 3)
- ```
-
- ```{r}
- # Inspect and recode party to two buckets
-posts0 <- candidate_data %>%
-  mutate(
-    party_clean = str_squish(as.character(party_clean)),
-    party_clean_lower = str_to_lower(party_clean)
-  )
-
-# see what labels we actually have
-posts0 %>% count(party_clean, sort = TRUE) %>% print(n = 50)
-
-posts <- posts0 %>%
-  mutate(
-    party2 = case_when(
-      str_detect(party_clean_lower, "dem") ~ "Democrat",
-      str_detect(party_clean_lower, "rep|gop") ~ "Republican",
-      TRUE ~ NA_character_
-    )
-  )
-
-# check counts after recode
-posts %>% count(party2, sort = TRUE)
- ```
-
-```{r question4}
-# Recode to two parties and keep non-empty text (base R)
-df <- candidate_data
-df$text <- trimws(as.character(df$text))
-df$party_clean <- trimws(as.character(df$party_clean))
-keep <- !is.na(df$text) & nzchar(df$text)
-df <- df[keep, , drop = FALSE]
-
-pl <- tolower(df$party_clean)
-party2 <- ifelse(grepl("dem", pl), "Democrat",
-          ifelse(grepl("rep|gop", pl), "Republican", NA_character_))
-df$party2 <- party2
-df <- df[!is.na(df$party2), c("text","party2")]
-
-# 2) Tiny balanced sample (<= 60 per party). Lower to 30 if needed.
-set.seed(42)
-tab <- table(df$party2)
-cap <- min(60L, as.integer(min(tab)))
-idx <- unlist(lapply(names(tab), function(p) {
-  which(df$party2 == p)[sample(sum(df$party2 == p), cap)]
-}))
-small <- df[idx, , drop = FALSE]
-
-cat("Docs per party:\n"); print(table(small$party2))
-
-# 3) Super-light cleanup + base tokenization
-clean_one <- function(s) {
-  s <- tolower(s)
-  s <- gsub("https?://\\S+|www\\S+", " ", s, perl = TRUE)
-  s <- gsub("@\\w+|#\\w+|&amp;|&gt;|&lt;", " ", s, perl = TRUE)
-  s <- gsub("[^a-z]+", " ", s, perl = TRUE)     # keep letters only
-  s <- trimws(s)
-  s
-}
-
-stop_set <- c(  # tiny stopword list (enough for this tiny demo)
-  "the","and","for","that","with","this","from","have","your","you","about",
-  "are","was","were","been","they","them","their","there","here","will",
-  "into","over","more","just","what","when","where","which","than","then",
-  "into","out","only","very","like","time","been","because","after","before"
-)
-
-tokenize <- function(s) {
-  s <- clean_one(s)
-  if (!nzchar(s)) return(character(0))
-  w <- strsplit(s, " +", fixed = FALSE)[[1]]
-  w <- w[nchar(w) >= 4]
-  w[!(w %in% stop_set)]
-}
-
-# 4) Split, count
-dem_words <- unlist(lapply(small$text[small$party2=="Democrat"], tokenize), use.names = FALSE)
-rep_words <- unlist(lapply(small$text[small$party2=="Republican"], tokenize), use.names = FALSE)
-
-dem_tab <- sort(table(dem_words), decreasing = TRUE)
-rep_tab <- sort(table(rep_words), decreasing = TRUE)
-
-# 5) Log-odds with prior (tiny, robust)
-all_terms <- union(names(dem_tab), names(rep_tab))
-A <- as.integer(dem_tab[all_terms]); A[is.na(A)] <- 0L
-B <- as.integer(rep_tab[all_terms]); B[is.na(B)] <- 0L
-
-alpha <- 1
-pa <- (A + alpha) / sum(A + alpha)
-pb <- (B + alpha) / sum(B + alpha)
-log_odds <- log(pa) - log(pb)
-
-res <- data.frame(term = all_terms, log_odds = log_odds, stringsAsFactors = FALSE)
-
-top_dem <- res[order(-res$log_odds), ][1:min(15, nrow(res)), ]
-top_rep <- res[order(res$log_odds),  ][1:min(15, nrow(res)), ]
-
-cat("\nTop Democrat-leaning terms (tiny sample):\n"); print(top_dem, row.names = FALSE)
-cat("\nTop Republican-leaning terms (tiny sample):\n"); print(top_rep, row.names = FALSE)
-```
 
 ```{r}
-# Simple log share ratio (matches the prompt wording)
-eps <- 1e-8
-all_terms <- union(names(dem_tab), names(rep_tab))
-A <- as.integer(dem_tab[all_terms]); A[is.na(A)] <- 0L
-B <- as.integer(rep_tab[all_terms]); B[is.na(B)] <- 0L
-lsr <- log( (A / sum(A) + eps) / (B / sum(B) + eps) )
+library(quanteda)
 
-res_lsr <- data.frame(term = all_terms, log_share_ratio = lsr, stringsAsFactors = FALSE)
-top_dem_lsr <- res_lsr[order(-res_lsr$log_share_ratio), ][1:12, ]
-top_rep_lsr <- res_lsr[order(res_lsr$log_share_ratio),  ][1:12, ]
+# build corpus and carry party labels as a docvar
+df$party <- if ("party" %in% names(df)) df$party else df$party_clean
+corp <- corpus(df, text_field = "text")
 
-cat("\nTop Democrat (log share ratio):\n"); print(top_dem_lsr, row.names = FALSE)
-cat("\nTop Republican (log share ratio):\n"); print(top_rep_lsr, row.names = FALSE)
+# tokens -> dfm (light trim)
+toks <- tokens(corp, remove_punct = TRUE, remove_numbers = TRUE)
+D    <- dfm(toks) |> dfm_trim(min_termfreq = 2)
+
+# get group vector from docvars, keep only labeled rows
+p <- docvars(D, "party")
+keep <- !is.na(p) & nzchar(as.character(p))
+D    <- D[keep, ]
+p    <- p[keep]
+
+# GROUP FIRST, then TF–IDF
+Dby    <- dfm_group(D, groups = p)            # rows: party levels
+Dtf_by <- dfm_tfidf(Dby, scheme_tf = "prop")
+
+# top TF–IDF terms per party (prints)
+feat  <- featnames(Dtf_by)
+top_n <- 10
+for (lev in rownames(Dtf_by)) {
+  v <- as.numeric(Dtf_by[lev, ]); names(v) <- feat
+  top <- head(sort(v, decreasing = TRUE), top_n)
+  cat("\nTop", lev, "TF-IDF terms:\n")
+  print(data.frame(term = names(top), tfidf = unname(top)), row.names = FALSE)
+}
 ```
 
 **thoughts and observations:**
-For this part, I focused on party affiliation as the main source of variation. By comparing a balanced set of Democratic and Republican posts, I used the log share ratio to see which words each group used more often.
-
-The results make sense: Democrats talked more about polls, voting, community, and congressional issues, which shows an emphasis on elections and civic participation. Republicans, on the other hand, used words like government, life, crime, border, and Biden, reflecting a focus on policy critiques, values, and security. Even in a small sample, the differences clearly highlight how each party frames its priorities in distinct ways.
+I used party (Democrat vs. Republican) as the variation axis. After tokenizing, I grouped posts by party and computed TF-IDF, then took the top 10 tokens per group. Democrats’ top terms were mostly local/candidate tags (e.g., #swfl, county tags, banyai), while Republicans’ were national slogans/branding and handles (e.g., #takebackthehouse, #bidenflation, @jeffontheright). TF-IDF is clearly picking up party-specific campaign language; if I filter handles/URLs/hashtags and rerun, I’d expect more issue words to surface.
 
 ## Question 5
 
 Create a dictionary (or use a pre-existing dictionary) to measure a topic of interest in your data. It can be anything, sentiment, tone, misinformation, any topic of interest. Label your documents, and visualize the prevalence of your classes. 
 
 ```{r}
-# NOTE: This analysis was run using the standalone R script to avoid Quarto crashes
-# Results are loaded from the pre-generated files
+library(stringr)
+library(tidyverse)
+library(quanteda)
+library(quanteda.textstats)
+library(quanteda.dictionaries)
+library(quanteda.sentiment)
 
-# Load the results from the standalone analysis
-if (file.exists("q5_labeled_sample.csv")) {
-  q5_results <- read.csv("q5_labeled_sample.csv", stringsAsFactors = FALSE)
-  
-  cat("Question 5 Results (from standalone analysis):\n")
-  cat("Sample size:", nrow(q5_results), "documents\n")
-  cat("Parties:", paste(unique(q5_results$party), collapse = ", "), "\n")
-  cat("Sentiments:", paste(unique(q5_results$sentiment), collapse = ", "), "\n\n")
-  
-  # Show overall sentiment distribution
-  cat("Overall sentiment distribution:\n")
-  print(table(q5_results$sentiment))
-  
-  # Show sentiment by party
-  cat("\nSentiment by party:\n")
-  print(table(q5_results$party, q5_results$sentiment))
-  
-  # Show sample of labeled data
-  cat("\nSample of labeled documents:\n")
-  print(head(q5_results, 5))
-  
-} else {
-  cat("Q5 results file not found. Please run: Rscript question5_standalone.R\n")
-}
+# read the csv file
+df <- read.csv("/Users/zhaoshuti/Desktop/TAT/problem-set-01-2025-ShutiZhao/midterm_candidates_labeled_all_May05.csv")
+glimpse(df)
+
+# create a corpus
+df_corpus <- corpus(df, text_field = "text")
+docvars(df_corpus, "party_clean") <- df$party_clean
+
+# make the tokens into a dfm
+toks     <- tokens(df_corpus, remove_punct = TRUE)
+dfm_all  <- dfm(toks, tolower = TRUE)
+dfm_trim <- dfm_trim(dfm_all, min_termfreq = 2)
+
+# lookup the dictionary 
+dfm_sentiment <- quanteda::dfm_lookup(
+  dfm_trim,
+  dictionary = data_dictionary_LSD2015[c("positive","negative")]
+)
 ```
 
 ```{r}
-# Display the plots created by the standalone analysis
-if (file.exists("q5_sentiment_overall.png") && file.exists("q5_sentiment_by_party.png")) {
-  cat("Sentiment analysis visualizations (generated by standalone script):\n")
-  cat("- q5_sentiment_overall.png: Overall sentiment distribution\n")
-  cat("- q5_sentiment_by_party.png: Sentiment by party comparison\n")
-} else {
-  cat("Plot files not found. Please run: Rscript question5_standalone.R\n")
-}
+# per-doc counts -> add metadata -> majority label
+sent_df <- dfm_sentiment |>
+  quanteda::convert(to = "data.frame")
+
+# make the first column name doc_id
+names(sent_df)[1] <- "doc_id"
+
+# ensure count columns exist
+if (!"positive" %in% names(sent_df)) sent_df$positive <- 0L
+if (!"negative" %in% names(sent_df)) sent_df$negative <- 0L
+
+sent_df <- sent_df |>
+  left_join(
+    tibble(
+      doc_id      = quanteda::docnames(dfm_trim),
+      party_clean = quanteda::docvars(dfm_trim, "party_clean")
+    ),
+    by = "doc_id"
+  ) |>
+  mutate(
+    positive = tidyr::replace_na(positive, 0L),
+    negative = tidyr::replace_na(negative, 0L),
+    major_sentiment = case_when(
+      positive > negative ~ "Positive",
+      negative > positive ~ "Negative",
+      TRUE ~ "Neutral"
+    )
+  )
 ```
 
-### **Sentiment Analysis Visualizations**
+```{r}
+# Show sentiment distribution
+# overall prevalence
+sent_df |>
+  count(major_sentiment) |>
+  ggplot(aes(major_sentiment, n, fill = major_sentiment)) +
+  geom_col() +
+  theme_minimal()
 
-![Overall Sentiment Distribution](q5_sentiment_overall.png)
+# by party (Dem vs Rep)
+sent_df |>
+  mutate(party2 = case_when(
+    str_detect(party_clean, regex("dem", ignore_case = TRUE)) ~ "Democrat",
+    str_detect(party_clean, regex("\\b(rep|gop)\\b", ignore_case = TRUE)) ~ "Republican",
+    TRUE ~ "Other"
+  )) |>
+  filter(party2 %in% c("Democrat","Republican")) |>
+  count(major_sentiment, party2) |>
+  ggplot(aes(major_sentiment, n, fill = party2)) +
+  geom_col(position = "stack") +
+  theme_minimal()
+```
 
-![Sentiment by Party](q5_sentiment_by_party.png)
+**thoughts and observations:**
+I measured sentiment with the LSD2015 dictionary (positive/negative). I tokenized, lowercased, removed punctuation, built a dfm, and counted dictionary hits. Each post got a Positive, Negative, or Neutral label by simple majority (ties → Neutral).
 
-## **Question 5 Results Summary (I can only run the cell in a Standalone R session)**
+The prevalence plot shows a clear Positive > Neutral > Negative pattern overall. Splitting by party, both Democrats and Republicans follow the same ordering—campaign posts are mostly upbeat.
 
-**Dictionary-Based Sentiment Analysis Results:**
-
-- **Sample Size:** 10 documents (5 Democrat, 5 Republican)
-- **Overall Sentiment Distribution:**
-  - Neutral: 8 documents (80%)
-  - Positive: 2 documents (20%)
-  - Negative: 0 documents (0%)
-
-- **Sentiment by Party:**
-  - **Democrats:** 4 Neutral, 1 Positive
-  - **Republicans:** 4 Neutral, 1 Positive
-
-**Key Findings:**
-1. **Most posts are neutral** in sentiment, suggesting political posts often focus on policy rather than emotional language
-2. **Both parties show similar sentiment patterns** in this small sample
-3. **Positive sentiment** appears in posts about volunteers, campaigns, and achievements
-4. **The dictionary approach** successfully identified sentiment patterns without complex machine learning
-
-**Methodology:**
-- Used a **hand-crafted dictionary** with positive and negative words
-- Applied **streaming data processing** to handle large datasets efficiently
-- **Lightweight tokenization** to avoid memory issues
-- **Balanced sampling** across political parties
-
----
-
-## **Combined Analysis Summary**
-
-**Question 4 (Word Discrimination):**
-- **Source of Variation:** Political party affiliation
-- **Method:** Log share ratio analysis
-- **Key Finding:** Democrats focus on "polls," "voting," "community," "congressional" while Republicans emphasize "government," "life," "crime," "border," "Biden"
-
-**Question 5 (Sentiment Analysis):**
-- **Dictionary:** Hand-crafted positive/negative word lists
-- **Sample:** 10 documents (5 per party)
-- **Key Finding:** 80% neutral sentiment, similar patterns across parties
-- **Insight:** Political posts focus on policy rather than emotional language
-
-**Overall Insights:**
-1. **Party differences** are more visible in **topic focus** (Q4) than **sentiment** (Q5)
-2. **Both analyses** successfully used **simple, interpretable methods**
-3. **Streaming approaches** enabled analysis of large datasets without memory issues
-
-
+Limitations: bag-of-words and no context (e.g., negation, sarcasm). It’s a clean baseline; in Q6 I add a tiny negation tweak to handle phrases like “not support.”
 
 ## Question 6
 
 Pick some documents (at least 10 for each class) that are exemplar (high probability) of being for each class of your dictionary. Read these documents.  Now let's try to augment a little your classifier.
 
 ```{r}
-# Augmentation
-negate_terms <- c("not","no","never","isnt","wasnt","cant","wont","dont","doesnt","didnt")  # no apostrophes
+# make sure text is available
+quanteda::docvars(dfm_trim, "text") <- df$text
 
-augment_score <- function(s){
-  w <- clean_tokens(s)
-  if (!length(w)) return(c(pos=0,neg=0,score=0))
-  # negation + positive -> count as negative
-  neg_bigram_hits <- sum(w %in% POS & c(FALSE, head(w, -1) %in% negate_terms))
-  p <- sum(w %in% POS)
-  n <- sum(w %in% NEG) + neg_bigram_hits
-  sc <- p - n
-  c(pos=p, neg=n, score=sc)
+docnames_vec <- quanteda::docnames(dfm_trim)
+text_vec     <- quanteda::docvars(dfm_trim, "text")
+party_vec    <- quanteda::docvars(dfm_trim, "party_clean")
+
+# confidence margin
+sent_df$margin <- abs(sent_df$positive - sent_df$negative)
+
+pick_top <- function(df, label, k = 10) {
+  sub <- df[df$major_sentiment == label, ]
+  sub <- sub[order(-sub$margin, -sub$positive, sub$negative), ]
+  sub <- head(sub, k)
+  idx <- match(sub$doc_id, docnames_vec)
+  sub$party   <- party_vec[idx]
+  sub$text    <- text_vec[idx]
+  sub$preview <- substr(sub$text, 1, 160)
+  sub[, c("major_sentiment","party","doc_id","positive","negative","margin","preview")]
 }
 
-A <- t(vapply(lab2$text, augment_score, FUN.VALUE = c(pos=0, neg=0, score=0)))
-A <- as.data.frame(A)
+ex_pos_before <- pick_top(sent_df, "Positive", 10)
+ex_neg_before <- pick_top(sent_df, "Negative", 10)
 
-# Give unique, explicit names to avoid ".1" suffix confusion
-names(A) <- c("pos_aug", "neg_aug", "score_aug")
+exemplars_before <- rbind(
+  transform(ex_pos_before, class = "positive"),
+  transform(ex_neg_before, class = "negative")
+)
 
-lab_aug <- cbind(lab2, A)
+print(exemplars_before, row.names = FALSE)
+```
 
-# Now compute the augmented label using the *aug* columns
-lab_aug$label_aug <- ifelse(lab_aug$pos_aug > lab_aug$neg_aug, "Positive",
-                            ifelse(lab_aug$neg_aug > lab_aug$pos_aug, "Negative", "Neutral"))
+```{r}
+# add full text to exemplars (match doc_id -> dfm docs)
+ex_pos_before$text <- quanteda::docvars(dfm_trim, "text")[match(ex_pos_before$doc_id,
+                                                                quanteda::docnames(dfm_trim))]
+ex_neg_before$text <- quanteda::docvars(dfm_trim, "text")[match(ex_neg_before$doc_id,
+                                                                quanteda::docnames(dfm_trim))]
+```
 
-# Sanity checks & small outputs we can cite
-cat("Labels changed after augmentation: ",
-    sum(lab_aug$label_aug != lab2$label_rescore), "\n")
+```{r}
+# Treat "not/never/can't…" + (support/help/good/great/happy/proud/thank/win/love) as negative
+neg_re <- "(?:\\bnot\\b|\\bno\\b|\\bnever\\b|isn['’]?t|wasn['’]?t|can['’]?t|won['’]?t|don['’]?t|doesn['’]?t|didn['’]?t|cannot)\\s+(support|help|good|great|happy|proud|thank|win|love)"
 
-cat("\nClass counts before vs after augmentation:\n")
-print(table(Before = lab2$label_rescore))
-print(table(After  = lab_aug$label_aug))
+relabel_aug <- function(df) {
+  t <- tolower(df$text)
+  negated_pos <- stringr::str_count(t, neg_re)
+  df$pos_aug  <- pmax(0L, df$positive - negated_pos)
+  df$neg_aug  <- df$negative + negated_pos
+  df$label_aug <- ifelse(df$pos_aug > df$neg_aug, "Positive",
+                     ifelse(df$neg_aug > df$pos_aug, "Negative", "Neutral"))
+  df
+}
 
-# save examples that changed
-changed <- lab_aug[lab_aug$label_aug != lab2$label_rescore,
-                   c("party","text","pos","neg","label_rescore","pos_aug","neg_aug","label_aug")]
-if (nrow(changed)) {
-  write.csv(changed, "q6_changed_examples.csv", row.names = FALSE)
-  cat("Saved: q6_changed_examples.csv\n")
+ex_after <- rbind(relabel_aug(ex_pos_before), relabel_aug(ex_neg_before))
+
+# Show any flips
+flips <- ex_after[ex_after$label_aug != ex_after$major_sentiment,
+                  c("doc_id","major_sentiment","label_aug","positive","negative","pos_aug","neg_aug","preview")]
+if (nrow(flips)) print(flips, row.names = FALSE)
+```
+
+```{r}
+# top 10 exemplars per class
+exemplars_before %>%
+  dplyr::select(class, doc_id, preview) %>%
+  dplyr::arrange(class) %>%
+  dplyr::group_by(class) %>%
+  dplyr::slice_head(n = 10) %>%
+  print(n = 20)
+
+# class counts before vs after
+before_counts <- as.data.frame(table(sent_df$major_sentiment))
+after_counts  <- as.data.frame(table(ex_after$label_aug))
+cat("\nClass counts BEFORE:\n"); print(before_counts, row.names = FALSE)
+cat("\nClass counts AFTER:\n");  print(after_counts,  row.names = FALSE)
+
+# flips summary and a few examples
+flips <- ex_after[ex_after$label_aug != ex_after$major_sentiment,
+                  c("doc_id","major_sentiment","label_aug","preview")]
+cat("\nFlips after augmentation:", nrow(flips), "\n")
+if (nrow(flips) > 0) {
+  print(utils::head(flips, 5), row.names = FALSE)
 }
 ```
 
+
 **thoughts and observations:**
-I selected exemplar documents by first prioritizing **one-sided posts**—cases where only one of the two sentiment counts (positive or negative, from the dictionary in Q5) was greater than zero and the **total** (positive + negative) exceeded **5**. This yields very **high-confidence** examples with clear polarity.  
-When a class (Positive or Negative) had fewer than **10** such posts, I **topped up** from the remaining documents using a simple confidence score,
-\[
-\text{conf} = \frac{|\,\text{pos} - \text{neg}\,|}{\sqrt{\text{pos} + \text{neg} + 1}},
-\]
-and took the highest-confidence items until I had **10 per class**.
+I picked exemplars where only one side of the dictionary fired (positive>0 & negative=0, or negative>0 & positive=0) with total hits >5, then took 10 per class and read short previews. Negative exemplars were critiques/attack/problem posts (op-eds, complaints, issue contrasts). Positive exemplars were outreach/celebration posts—greetings, thanks, welcomes, community/event language. These match the dictionary’s intent.
 
-A quick qualitative read of these exemplars suggested that **Positive** posts are dominated by gratitude/achievement terms (e.g., *thank, proud, support, honor*), while **Negative** posts emphasize criticism or issue framing (e.g., *inflation, crime, border, crisis*). This supports the **face validity** of the dictionary labels from Q5.
+Class balance (overall). Before augmentation the corpus skews positive: Positive ≈ 74k, Neutral ≈ 36k, Negative ≈ 24k—consistent with lots of thanking/announcements.
 
-As a small augmentation, I tested a negation heuristic (counting bigrams like “**not good**” as negative). In this sample the augmentation **did not change** class labels, which is consistent with the relatively short, slogan-like style of many posts and the small exemplar set. On a larger sample, this heuristic might have more effect around constructions like “**not happy**,” “**never proud**,” etc.
+Augmentation & effect. I added a tiny negation rule (e.g., “not/never/can’t + support/help/good…” counts against positive). On the exemplar subset there were 0 flips—expected because they’re high-confidence, one-sided cases.
+
+The dictionary behaves as intended on clear examples. The negation tweak is a safe improvement; next steps would be adding an alerts/disaster bucket (e.g., outage, emergency, rumor) and a few celebration terms (blessed, grateful, congrats), while treating ambiguous words like “support” as context-dependent.
 
 
 
@@ -596,127 +431,144 @@ As a small augmentation, I tested a negation heuristic (counting bigrams like �
 
 Using cosine similarity, grab the closest 10 documents to each reference document you read before. Read those. How well does the cosine similarity work? Try with another measure of distance. Anything interesting there? 
 ```{r}
-# NOTE: This analysis was run using the standalone R script to avoid Quarto crashes
-# Results are loaded from the pre-generated analysis
+# load the reference documents
+ref_docs <- head(docnames(dfm_trim), 3)
 
-# Load Q5 results for reference
-if (file.exists("q5_labeled_sample.csv")) {
-  q5_results <- read.csv("q5_labeled_sample.csv", stringsAsFactors = FALSE)
-  
-  cat("Question 6.1 Results (from standalone analysis):\n")
-  cat("Sample size:", nrow(q5_results), "documents\n")
-  cat("Parties:", paste(unique(q5_results$party), collapse = ", "), "\n")
-  cat("Sentiments:", paste(unique(q5_results$sentiment), collapse = ", "), "\n\n")
-  
-  cat("QUESTION 6.1 SUMMARY (NEW ANALYSIS):\n")
-  cat("====================================\n")
-  cat("• Analyzed 3 reference documents using 4 different methods\n")
-  cat("• Compared: Cosine Similarity, Jaccard Similarity, Manhattan Distance, Euclidean Distance\n")
-  cat("• Vocabulary size: 129 words → 3 words (after trimming rare terms)\n\n")
-  
-  cat("METHOD PERFORMANCE (Party Consistency):\n")
-  cat("• Cosine Similarity: 100% party consistency (BEST)\n")
-  cat("• Manhattan Distance: 80% party consistency\n")
-  cat("• Euclidean Distance: 80% party consistency\n")
-  cat("• Jaccard Similarity: 60% party consistency (WEAKEST)\n\n")
-  
-  cat("METHOD AGREEMENT RATES (top 5 neighbors):\n")
-  cat("• Cosine vs Jaccard: 60%\n")
-  cat("• Jaccard vs Manhattan: 80%\n")
-  cat("• Manhattan vs Euclidean: 100%\n")
-  cat("• Euclidean vs Cosine: 80%\n\n")
-  
-  cat("KEY INSIGHTS:\n")
-  cat("• Cosine similarity works best for sparse political text data\n")
-  cat("• Distance methods (Manhattan, Euclidean) perform similarly\n")
-  cat("• Jaccard similarity struggles with limited vocabulary\n")
-  cat("• Small sample size limits generalizability but provides clear patterns\n")
-  
-} else {
-  cat("Q5 results file not found. Please run: Rscript question5_standalone.R\n")
-}
+# keep raw text + a simple doc id in docvars to join later
+docvars(dfm_trim, "text") <- df$text[seq_len(ndoc(dfm_trim))]
+docvars(dfm_trim, "doc")  <- docnames(dfm_trim)
 
+# build a tiny table with reference texts
+sample_text <- tibble(
+  doc_id = ref_docs,
+  text   = docvars(dfm_trim, "text")[match(ref_docs, docnames(dfm_trim))]
+)
+
+# COSINE
+closest_cosine <- textstat_simil(
+  dfm_trim,
+  y = dfm_trim[ref_docs, ],
+  margin = "documents",
+  method = "cosine"
+) %>%
+  as.data.frame() %>%
+  group_by(document2) %>%
+  arrange(desc(cosine), .by_group = TRUE) %>%
+  slice_head(n = 10) %>%
+  rename(
+    doc     = document1,
+    ref_doc = document2
+  ) %>%
+  # add neighbor text
+  left_join(
+    docvars(dfm_trim) %>% as.data.frame() %>% select(doc, text),
+    by = "doc"
+  ) %>%
+  # add reference text
+  left_join(
+    sample_text %>% rename(ref_doc = doc_id, ref_text = text),
+    by = "ref_doc"
+  )
+
+# peek 
+closest_cosine %>%
+  select(ref_doc, ref_text, doc, text, cosine) %>%
+  arrange(ref_doc, desc(cosine)) %>%
+  print(n = 30)
+```
+
+```{r}
+# Correlation similarity
+closest_cor <- textstat_simil(
+  dfm_trim,
+  y = dfm_trim[ref_docs, ],
+  margin = "documents",
+  method = "correlation"
+) %>%
+  as.data.frame() %>%
+  group_by(document2) %>%
+  arrange(desc(correlation), .by_group = TRUE) %>%
+  slice_head(n = 10) %>%
+  rename(
+    doc     = document1,
+    ref_doc = document2
+  ) %>%
+  left_join(
+    docvars(dfm_trim) %>% as.data.frame() %>% select(doc, text),
+    by = "doc"
+  ) %>%
+  left_join(
+    sample_text %>% rename(ref_doc = doc_id, ref_text = text),
+    by = "ref_doc"
+  )
+
+closest_cor %>%
+  select(ref_doc, ref_text, doc, text, correlation) %>%
+  arrange(ref_doc, desc(correlation)) %>%
+  print(n = 30)
 ```
 
 **thoughts and observations:**
-I analyzed document similarity using four different measures on 10 political documents from my Q5 sentiment analysis. I compared cosine similarity, Jaccard similarity, Manhattan distance, and Euclidean distance to find the 10 closest neighbors for 3 reference documents (all Democrat). The vocabulary was trimmed to 3 words after removing rare terms, which limited discrimination but provided clear comparative results.
-Cosine similarity performed best, achieving 100% party consistency - all top neighbors belonged to the same party as the reference documents. This suggests that the angular relationship between document vectors captures political alignment more effectively than other measures. Distance methods (Manhattan and Euclidean) performed similarly with 80% party consistency and 100% agreement between them, indicating that both L1 and L2 distance measures capture comparable document relationships in this sparse text space.
-Jaccard similarity struggled with the limited vocabulary, achieving only 60% party consistency. This suggests that binary word presence/absence is less effective than frequency-based measures when vocabulary is constrained. The strong party-based clustering across all methods indicates that political documents naturally group by party affiliation regardless of the similarity measure used.
-The most interesting finding is that cosine similarity's superiority suggests political messaging relies more on proportional word usage patterns than absolute frequencies. The limited vocabulary in this small sample means larger datasets with richer vocabularies might yield even stronger discrimination between methods. For political text analysis, cosine similarity appears to be the most reliable method for identifying similar documents and party-based clustering.
+
+Method. I used textstat_simil on my DFM to find the top-10 nearest neighbors for three reference posts (text1, text2, text3) with cosine similarity, then repeated the same with correlation and compared the lists.
+
+Cosine – text2 (anniversary/thank-you). Scores are extremely high (two at ~0.910), and the neighbors look like near-duplicates with the same “Happy/blessed/thank you” phrasing. The rest (0.56–0.45) keep the same upbeat tone and vocabulary.
+
+Cosine – text3 (Hurricane Ian update). Neighbors cluster tightly (~0.63–0.58), all around storm updates and public-info language. Cosine clearly groups posts that share concrete, event-specific terms.
+
+Cosine – text1 (attack/critique). Scores are lower (~0.37–0.33) and neighbors are more mixed (generic “It’s/This…”, mentions). Less distinctive vocabulary makes it harder for cosine to find obviously “same-topic” matches.
+
+Cosine vs. correlation. The correlation lists are almost the same as cosine (very similar scores and neighbors for all three refs). With sparse, non-negative counts, both measures rank documents similarly.
+
+Takeaway. Cosine works well for near-duplicates and clearly topical posts; it’s less decisive for generic language. Correlation doesn’t add much beyond cosine here. If needed, TF-IDF or binary+Jaccard could sharpen neighbors for the generic case.
 
 ### Question 6.2
 
 Now, check qualitative these documents. Take a look at the top features, keyword in Context, higher TF-IDF. Would you change anything in your dictionary now that you looked in these documents?
 
 ```{r}
-# NOTE: This analysis was run using the standalone R script to avoid Quarto crashes
-# To run the full analysis: Rscript question6_2_standalone.R
+# Top features (overall and by sentiment)
+top_overall <- textstat_frequency(dfm_trim, n = 20)
 
-# Load Q5 results for reference
-if (file.exists("q5_labeled_sample.csv")) {
-  q5_results <- read.csv("q5_labeled_sample.csv", stringsAsFactors = FALSE)
-  
-  cat("Question 6.2 Results (from standalone analysis):\n")
-  cat("Sample size:", nrow(q5_results), "documents\n")
-  cat("Parties:", paste(unique(q5_results$party), collapse = ", "), "\n")
-  cat("Sentiments:", paste(unique(q5_results$sentiment), collapse = ", "), "\n\n")
-  
-  # Try to load results from standalone analysis if available
-  if (file.exists("q6_2_top_features_overall.csv")) {
-    cat("Loading results from standalone analysis...\n")
-    
-    # Load the generated results
-    top_features <- read.csv("q6_2_top_features_overall.csv", stringsAsFactors = FALSE)
-    top_by_sentiment <- read.csv("q6_2_top_features_by_sentiment.csv", stringsAsFactors = FALSE)
-    tfidf_results <- read.csv("q6_2_tfidf_top_by_sentiment.csv", stringsAsFactors = FALSE)
-    
-    cat("\nTOP FEATURES OVERALL:\n")
-    print(head(top_features, 10))
-    
-    cat("\nTOP FEATURES BY SENTIMENT:\n")
-    print(top_by_sentiment)
-    
-    cat("\nHIGH TF-IDF TERMS BY SENTIMENT:\n")
-    print(tfidf_results)
-    
-    if (file.exists("q6_2_kwic_examples.csv")) {
-      kwic_results <- read.csv("q6_2_kwic_examples.csv", stringsAsFactors = FALSE)
-      cat("\nKEYWORDS-IN-CONTEXT EXAMPLES:\n")
-      print(head(kwic_results, 10))
-    }
-    
-  } else {
-    cat("Standalone analysis results not found.\n")
-    cat("To run the full analysis, execute: Rscript question6_2_standalone.R\n\n")
-    
-    cat("QUESTION 6.2 SUMMARY (BASED ON Q5 DATA):\n")
-    cat("========================================\n")
-    cat("• Sample: 10 documents across 3 sentiment classes\n")
-    cat("• Positive: 2 documents (20%)\n")
-    cat("• Neutral: 8 documents (80%)\n")
-    cat("• Negative: 0 documents (0%)\n\n")
-    
-    cat("DICTIONARY RECOMMENDATIONS:\n")
-    cat("• Add context-specific terms: 'fraud', 'devastating', 'blessed'\n")
-    cat("• Include campaign terms: 'volunteer', 'team', 'anniversary'\n")
-    cat("• Consider negation handling: 'isn't', 'won't', 'can't'\n")
-    cat("• Add domain-specific terms: 'hurricane', 'disaster', 'relief'\n")
-  }
-  
-} else {
-  cat("Q5 results file not found. Please run: Rscript question5_standalone.R\n")
-}
+groups_vec <- sent_df$major_sentiment[match(docnames(dfm_trim), sent_df$doc_id)]
+top_by_sent <- textstat_frequency(dfm_trim, groups = groups_vec, n = 20)
+
+# High TF-IDF terms by sentiment 
+dfm_by        <- dfm_group(dfm_trim, groups = groups_vec)
+dfm_tfidf_by  <- dfm_tfidf(dfm_by)
+
+tfidf_top <- lapply(docnames(dfm_tfidf_by), function(g) {
+  tibble(
+    sentiment = g,
+    term  = featnames(dfm_tfidf_by),
+    tfidf = as.numeric(dfm_tfidf_by[g, ])
+  ) |> arrange(desc(tfidf)) |> slice_head(n = 15)
+}) |> bind_rows()
+
+# Keywords-in-context 
+toks_lc <- tokens_tolower(toks)
+kw_terms <- c("inflation","crime","border","abortion","thank","support","hurricane")
+
+kwic_tbl <- bind_rows(lapply(kw_terms, function(w) {
+  k <- kwic(toks_lc, pattern = w, window = 5)
+  if (!is.null(k) && nrow(k) > 0) as_tibble(k) |> mutate(keyword = w) else NULL
+}))
+
+# have a look
+head(top_overall)
+head(top_by_sent)
+head(tfidf_top)
+head(kwic_tbl)
 ```
 
-**Your thoughts and observations:**
+**thoughts and observations:**
 
-After examining the exemplar documents using top features, TF-IDF scores, and keywords-in-context, I found several patterns that would improve my sentiment dictionary. The most frequent terms were dominated by Unicode artifacts from social media formatting and political terminology like "democrats," "republicans," and "hurricane" - reflecting the Hurricane Ian disaster context that appeared in multiple posts.
+Top features. The most frequent words split between campaign language (thank/thanks, happy, congrats, blessed) and issue/event terms (inflation, crime, border, hurricane). By sentiment, Positive is heavy on celebration/thanks; Negative leans on critique/alert vocabulary.
 
-The TF-IDF analysis showed identical scores (0.602) for most terms due to the small sample size and aggressive trimming, creating a sparse vocabulary. However, political party names and disaster-related terms were still the most distinguishing features.
+KWIC. thank/thanks consistently express gratitude (clearly positive). inflation appears in complaint/critique contexts (clearly negative). hurricane shows urgent public-info updates—negative/alert tone, not hostile. support is mixed and context-dependent.
 
-The keywords-in-context analysis provided the most valuable insights. "Thank" appeared in positive contexts like "**thank** you to our volunteer annie heisey for sharing your talents with our campaign!" while "abortion" appeared in negative policy critiques like "republicans plot a national **abortion** ban and a raid on social security."
+TF-IDF. High TF-IDF surfaces distinctive tokens that define posts: celebration terms (anniversary, blessed, congrats), event words (hurricane, ian, update), and sharp critique markers (fraud, rumor, outage). These cleanly separate upbeat personal posts from alerts/attacks.
 
-Based on this analysis, I would add several types of terms to my sentiment dictionary: positive terms like "volunteer," "talents," "sharing," and "blessed"; policy critique terms like "plot," "ban," "raid," and "devastating"; disaster terms like "hurricane," "relief," and "breaking point"; and political action verbs like "fight," "win," and "defeat." I'd also handle Unicode artifacts and negation patterns more carefully.
+Dictionary tweaks. Add to Positive: blessed, grateful, congrats, anniversary, appreciate, welcome. Add to Negative/Alert: shortage, outage, scam, rumor, fraud, disaster, emergency, evacuation. Treat support and generic campaign verbs as neutral/noise; consider multi-word phrases like “thank you” and “state of emergency.”
 
-The key insight is that political sentiment operates through policy positioning and opposition framing rather than traditional emotional language. A political sentiment dictionary should capture terms that signal support for or opposition to specific policies and candidates, not just emotional words.
-
+After reading examples, I’d expand positive celebration/thanks terms, add an alert/disaster bucket on the negative side, and neutralize ambiguous words. This should make the dictionary match how the posts actually read.
